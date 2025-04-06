@@ -1,5 +1,6 @@
 ﻿using LifeSciencesHackathon.Service;
 using Microsoft.OpenApi.Models;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 
@@ -11,6 +12,10 @@ builder.WebHost.ConfigureKestrel(options =>
     {
         listenOptions.UseHttps(); 
     });
+});
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
 });
 builder.Services.AddControllers()
     .AddJsonOptions(options =>

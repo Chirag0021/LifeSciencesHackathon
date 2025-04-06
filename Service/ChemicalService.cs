@@ -138,35 +138,35 @@ namespace LifeSciencesHackathon.Service
 
                 foreach (var section in sections.EnumerateArray())
                 {
-                    if (section.TryGetProperty("TOCHeading", out var heading) &&
-                        heading.GetString() == "Safety and Hazards")
+                    if (section.TryGetProperty("TOCHeading", out var heading))
                     {
-                        if (section.TryGetProperty("Section", out var subSections))
+                        if (heading.GetString() == "Safety and Hazards")
                         {
-                            foreach (var sub in subSections.EnumerateArray())
+                            if (section.TryGetProperty("Section", out var subSections))
                             {
-                                if (sub.TryGetProperty("TOCHeading", out var subHeading) &&
-                                    subHeading.GetString() == "GHS Classification")
+                                foreach (var sub in subSections.EnumerateArray())
                                 {
-                                    if (sub.TryGetProperty("Information", out var infoArray))
+                                    if (sub.TryGetProperty("TOCHeading", out var subHeading) &&
+                                        subHeading.GetString() == "GHS Classification")
                                     {
-                                        foreach (var info in infoArray.EnumerateArray())
+                                        if (sub.TryGetProperty("Information", out var infoArray))
                                         {
-                                            if (info.TryGetProperty("Value", out var value) &&
-                                                value.TryGetProperty("StringWithMarkup", out var strings))
+                                            foreach (var info in infoArray.EnumerateArray())
                                             {
-                                                foreach (var str in strings.EnumerateArray())
+                                                if (info.TryGetProperty("Value", out var val) &&
+                                                    val.TryGetProperty("StringWithMarkup", out var strings))
                                                 {
-                                                    if (str.TryGetProperty("String", out var textProp))
+                                                    foreach (var item in strings.EnumerateArray())
                                                     {
-                                                        var text = textProp.GetString();
-                                                        if (!string.IsNullOrWhiteSpace(text))
+                                                        var txt = item.GetProperty("String").GetString();
+                                                        if (!string.IsNullOrWhiteSpace(txt))
                                                         {
-                                                            hazardInfo.GhsHazards.Add(text);
+                                                            hazardInfo.GhsHazards.Add(txt);
 
-                                                            if (text.Contains("Warning") || text.Contains("Danger"))
+                                                            if (txt.Contains("Warning", StringComparison.OrdinalIgnoreCase) ||
+                                                                txt.Contains("Danger", StringComparison.OrdinalIgnoreCase))
                                                             {
-                                                                hazardInfo.SignalWord = text;
+                                                                hazardInfo.SignalWord = txt;
                                                             }
                                                         }
                                                     }
@@ -177,32 +177,30 @@ namespace LifeSciencesHackathon.Service
                                 }
                             }
                         }
-                    }
 
-                    if (section.TryGetProperty("TOCHeading", out heading) &&
-                        heading.GetString() == "Names and Identifiers")
-                    {
-                        if (section.TryGetProperty("Section", out var nameSubSections))
+                        if (heading.GetString() == "Names and Identifiers")
                         {
-                            foreach (var sub in nameSubSections.EnumerateArray())
+                            if (section.TryGetProperty("Section", out var subSections))
                             {
-                                if (sub.TryGetProperty("TOCHeading", out var subHeading) &&
-                                    subHeading.GetString() == "Synonyms")
+                                foreach (var sub in subSections.EnumerateArray())
                                 {
-                                    if (sub.TryGetProperty("Information", out var infoArray))
+                                    if (sub.TryGetProperty("TOCHeading", out var subHeading) &&
+                                        subHeading.GetString() == "Synonyms")
                                     {
-                                        foreach (var info in infoArray.EnumerateArray())
+                                        if (sub.TryGetProperty("Information", out var infoArray))
                                         {
-                                            if (info.TryGetProperty("Value", out var val) &&
-                                                val.TryGetProperty("StringWithMarkup", out var synList))
+                                            foreach (var info in infoArray.EnumerateArray())
                                             {
-                                                foreach (var s in synList.EnumerateArray())
+                                                if (info.TryGetProperty("Value", out var val) &&
+                                                    val.TryGetProperty("StringWithMarkup", out var strings))
                                                 {
-                                                    if (s.TryGetProperty("String", out var textProp))
+                                                    foreach (var item in strings.EnumerateArray())
                                                     {
-                                                        var text = textProp.GetString();
-                                                        if (!string.IsNullOrWhiteSpace(text))
-                                                            hazardInfo.Synonyms.Add(text);
+                                                        var txt = item.GetProperty("String").GetString();
+                                                        if (!string.IsNullOrWhiteSpace(txt))
+                                                        {
+                                                            hazardInfo.Synonyms.Add(txt);
+                                                        }
                                                     }
                                                 }
                                             }
