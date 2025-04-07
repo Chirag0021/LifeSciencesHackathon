@@ -9,5 +9,6 @@
         public string ImageUrl { get; set; }
         public List<string> Toxicity { get; set; } = new();
         public Dictionary<string, string> PhysicalProperties { get; set; } = new();
+        public string RiskLevel { get; set; }
     }
 }

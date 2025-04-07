@@ -1,4 +1,5 @@
 ﻿using LifeSciencesHackathon.Model;
+using Newtonsoft.Json;
 using System.Text.Json;
 
 namespace LifeSciencesHackathon.Service
@@ -50,7 +51,6 @@ namespace LifeSciencesHackathon.Service
                     {
                         if (section.TryGetProperty("TOCHeading", out var heading))
                         {
-                            // 🔹 Handle Toxicity
                             if (heading.GetString() == "Toxicity")
                             {
                                 if (section.TryGetProperty("Section", out var toxSections))
@@ -90,17 +90,37 @@ namespace LifeSciencesHackathon.Service
                                                 if (!info.TryGetProperty("Name", out var nameProp)) continue;
                                                 var label = nameProp.GetString();
 
-                                                if (info.TryGetProperty("Value", out var val) &&
-                                                    val.TryGetProperty("StringWithMarkup", out var values))
+                                                string? valueStr = null;
+
+                                                if (info.TryGetProperty("Value", out var val))
                                                 {
-                                                    foreach (var item in values.EnumerateArray())
+                                                    // First try to get from StringWithMarkup
+                                                    if (val.TryGetProperty("StringWithMarkup", out var markup))
                                                     {
-                                                        var valueStr = item.GetProperty("String").GetString();
-                                                        if (!string.IsNullOrWhiteSpace(valueStr) &&
-                                                            !chemicalInfo.PhysicalProperties.ContainsKey(label))
+                                                        foreach (var item in markup.EnumerateArray())
                                                         {
-                                                            chemicalInfo.PhysicalProperties.Add(label, valueStr);
+                                                            valueStr = item.GetProperty("String").GetString();
+                                                            break;
                                                         }
+                                                    }
+
+                                                    // If no StringWithMarkup, try Number + Unit
+                                                    if (string.IsNullOrWhiteSpace(valueStr) && val.TryGetProperty("Number", out var number))
+                                                    {
+                                                        valueStr = number.GetDouble().ToString();
+
+                                                        if (val.TryGetProperty("Unit", out var unit))
+                                                        {
+                                                            valueStr += " " + unit.GetString();
+                                                        }
+                                                    }
+                                                }
+
+                                                if (!string.IsNullOrWhiteSpace(label) && !string.IsNullOrWhiteSpace(valueStr))
+                                                {
+                                                    if (!chemicalInfo.PhysicalProperties.ContainsKey(label))
+                                                    {
+                                                        chemicalInfo.PhysicalProperties.Add(label, valueStr);
                                                     }
                                                 }
                                             }
@@ -111,7 +131,26 @@ namespace LifeSciencesHackathon.Service
                         }
                     }
                 }
-
+                if (chemicalInfo.Toxicity.Any())
+                {
+                    if (chemicalInfo.Toxicity.Any(t => t.Contains("lethal", StringComparison.OrdinalIgnoreCase) ||
+                                                       t.Contains("carcinogenic", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        chemicalInfo.RiskLevel = "High";
+                    }
+                    else if (chemicalInfo.Toxicity.Any(t => t.Contains("harmful", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        chemicalInfo.RiskLevel = "Medium";
+                    } 
+                    else
+                    {
+                        chemicalInfo.RiskLevel = "Low";
+                    }
+                }
+                else
+                {
+                    chemicalInfo.RiskLevel = "Unknown";
+                }
                 return chemicalInfo;
             }
             catch (Exception ex)
@@ -126,85 +165,53 @@ namespace LifeSciencesHackathon.Service
             {
                 var viewUrl = $"https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/{cid}/JSON";
                 var viewResponse = await _httpClient.GetStringAsync(viewUrl);
-                var doc = JsonDocument.Parse(viewResponse);
+                var roots = JsonConvert.DeserializeObject<Root>(viewResponse);
 
-                var root = doc.RootElement;
-
-                if (!root.TryGetProperty("Record", out var record) ||
-                    !record.TryGetProperty("Section", out var sections))
+                if (roots?.Record?.Section == null)
                     return null;
 
                 var hazardInfo = new HazardInfo();
 
-                foreach (var section in sections.EnumerateArray())
+                foreach (var section in roots.Record.Section)
                 {
-                    if (section.TryGetProperty("TOCHeading", out var heading))
+                    if (section.TOCHeading == "Safety and Hazards")
                     {
-                        if (heading.GetString() == "Safety and Hazards")
+                        var ghsSection = section.Subsections?.FirstOrDefault(s => s.TOCHeading == "GHS Classification");
+                        if (ghsSection?.Information != null)
                         {
-                            if (section.TryGetProperty("Section", out var subSections))
+                            foreach (var info in ghsSection.Information)
                             {
-                                foreach (var sub in subSections.EnumerateArray())
+                                foreach (var markup in info.Value?.StringWithMarkup ?? new List<StringWithMarkup>())
                                 {
-                                    if (sub.TryGetProperty("TOCHeading", out var subHeading) &&
-                                        subHeading.GetString() == "GHS Classification")
+                                    var txt = markup.String;
+                                    if (!string.IsNullOrWhiteSpace(txt))
                                     {
-                                        if (sub.TryGetProperty("Information", out var infoArray))
-                                        {
-                                            foreach (var info in infoArray.EnumerateArray())
-                                            {
-                                                if (info.TryGetProperty("Value", out var val) &&
-                                                    val.TryGetProperty("StringWithMarkup", out var strings))
-                                                {
-                                                    foreach (var item in strings.EnumerateArray())
-                                                    {
-                                                        var txt = item.GetProperty("String").GetString();
-                                                        if (!string.IsNullOrWhiteSpace(txt))
-                                                        {
-                                                            hazardInfo.GhsHazards.Add(txt);
+                                        hazardInfo.GhsHazards.Add(txt);
 
-                                                            if (txt.Contains("Warning", StringComparison.OrdinalIgnoreCase) ||
-                                                                txt.Contains("Danger", StringComparison.OrdinalIgnoreCase))
-                                                            {
-                                                                hazardInfo.SignalWord = txt;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
+                                        if (txt.Contains("Warning", StringComparison.OrdinalIgnoreCase) ||
+                                            txt.Contains("Danger", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            hazardInfo.SignalWord = txt;
                                         }
                                     }
                                 }
                             }
                         }
+                    }
 
-                        if (heading.GetString() == "Names and Identifiers")
+                    if (section.TOCHeading == "Names and Identifiers")
+                    {
+                        var synonymSection = section.Subsections?.FirstOrDefault(s => s.TOCHeading == "Synonyms");
+                        if (synonymSection?.Information != null)
                         {
-                            if (section.TryGetProperty("Section", out var subSections))
+                            foreach (var info in synonymSection.Information)
                             {
-                                foreach (var sub in subSections.EnumerateArray())
+                                foreach (var markup in info.Value?.StringWithMarkup ?? new List<StringWithMarkup>())
                                 {
-                                    if (sub.TryGetProperty("TOCHeading", out var subHeading) &&
-                                        subHeading.GetString() == "Synonyms")
+                                    var txt = markup.String;
+                                    if (!string.IsNullOrWhiteSpace(txt))
                                     {
-                                        if (sub.TryGetProperty("Information", out var infoArray))
-                                        {
-                                            foreach (var info in infoArray.EnumerateArray())
-                                            {
-                                                if (info.TryGetProperty("Value", out var val) &&
-                                                    val.TryGetProperty("StringWithMarkup", out var strings))
-                                                {
-                                                    foreach (var item in strings.EnumerateArray())
-                                                    {
-                                                        var txt = item.GetProperty("String").GetString();
-                                                        if (!string.IsNullOrWhiteSpace(txt))
-                                                        {
-                                                            hazardInfo.Synonyms.Add(txt);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        hazardInfo.Synonyms.Add(txt);
                                     }
                                 }
                             }
